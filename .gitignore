@@ -1,0 +1,16 @@
+﻿# secrets & session
+session.json
+apology_state.json
+sent_state.json
+top5_queue.json
+top8_progress.json
+target.json
+flag.txt
+apology_flag.txt
+audit_report.json
+edge_profile/
+shots/
+__pycache__/
+*.log
+*.tmp
+incantations.json
