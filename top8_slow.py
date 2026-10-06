@@ -7,10 +7,11 @@ API-verify each post; progress file; resumable; skip list; sparse log."""
 import sys, io, json, time, os, random, re, urllib.request
 
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
-sys.path.insert(0, r"E:\欧尼酱_召唤工作区")
+# 可移植：工作目录=程序所在目录
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from cdp import CDP
 
-WORK = r"E:\欧尼酱_召唤工作区"
+WORK = os.path.dirname(os.path.abspath(__file__))
 URL = "https://www.bilibili.com/video/BV1VdHE6PEEa"
 AID = 117384258060764
 PROG_F = os.path.join(WORK, "top8_progress.json")
@@ -69,7 +70,7 @@ def connect():
     if not os.path.exists(edge):
         edge = r"C:\Program Files\Microsoft\Edge\Application\msedge.exe"
     subprocess.Popen([edge, "--remote-debugging-port=9222",
-                      '--user-data-dir="E:\\欧尼酱_召唤工作区\\edge_profile"',
+                      "--user-data-dir=" + os.path.join(WORK, "edge_profile"),
                       "--no-first-run", "--window-size=1500,1300",
                       URL], cwd=os.path.dirname(edge))
     for _ in range(60):
@@ -84,6 +85,58 @@ def connect():
             pass
         time.sleep(2)
     raise RuntimeError("no browser")
+
+def inject_login_cookies(c):
+    """把当前账号（session.json=workbench扫码登录/切换的落点）注入调试浏览器：
+    - 先清掉 .bilibili.com 的旧登录cookie，防止浏览器里残留他人账号
+    - 再写入当前账号的 SESSDATA/bili_jct/DedeUserID/buvid3（+全套风控cookie若存档过），并刷新页面生效
+    这样发评论用的就是「当前登录账号」，而不是浏览器profile里残留的旧登录。
+    注意：bili_jct绝不能设HttpOnly——B站页面JS要读它作csrf令牌，否则发评论报CSRF校验失败。"""
+    try:
+        ck = json.load(open(os.path.join(WORK, 'session.json'), encoding='utf-8'))
+    except Exception:
+        log("session.json 读取失败——浏览器登录态将保持原样")
+        return
+    if not ck.get('SESSDATA'):
+        log("session.json 无登录凭据——浏览器登录态将保持原样（请先在面板扫码登录）")
+        return
+    # ★服务端有效性预检：凭据失效就绝不动浏览器现有登录——
+    # 否则会把浏览器里可能还有效的登录清掉，换上一套失效凭据，页面变成"请重新登录"
+    try:
+        hdr = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/126.0.0.0 Safari/537.36',
+               'Referer': URL,
+               'Cookie': '; '.join('%s=%s' % (k, v) for k, v in ck.items() if v)}
+        d = json.loads(urllib.request.urlopen(urllib.request.Request(
+            'https://api.bilibili.com/x/web-interface/nav', headers=hdr), timeout=15).read())
+        if not ((d.get('data') or {}).get('isLogin')):
+            log("⛔ 面板登录态已在服务端失效（isLogin=False）——浏览器登录保持原样不动。请在工作台左上角【👤】重新扫码登录！")
+            return
+    except Exception as e:
+        log("登录预检异常 %r——保守起见浏览器登录保持原样（请稍后重试或重新扫码）" % e)
+        return
+    try:
+        c.cmd("Network.enable")
+        for name in ("SESSDATA", "bili_jct", "DedeUserID", "buvid3", "ac_time_value", "DedeUserID__ckMd5", "sid"):
+            try:
+                c.cmd("Network.deleteCookies", {"name": name, "domain": ".bilibili.com"})
+            except Exception:
+                pass
+        # 全套cookie注入（扫码登录时存档过ac_time_value等则一并注入；没有的跳过，页面加载时服务端会自动种）
+        for name in sorted(ck.keys()):
+            if not ck.get(name) or name in ("mid", "uname", "saved_at", "face"):
+                continue
+            r = c.cmd("Network.setCookie", {"name": name, "value": str(ck[name]),
+                                            "domain": ".bilibili.com", "path": "/",
+                                            "httpOnly": name == "SESSDATA",
+                                            "secure": True, "sameSite": "Lax"})
+            if not (r or {}).get("success", False):
+                log("cookie注入 %s 返回 success=%r" % (name, r))
+        # 刷新页面让新登录态生效；并确认浏览器当前登录账号
+        c.navigate(URL); time.sleep(6)
+        who = js(c, "(document.cookie.indexOf('SESSDATA')>=0)?'有SESSDATA':'无SESSDATA'")
+        log("🍪 已注入当前账号cookie并刷新（%s）；发评论将使用面板【当前登录账号】" % who)
+    except Exception as e:
+        log("cookie注入异常 %r（继续按浏览器原有登录态工作）" % e)
 
 def click(c, x, y):
     c.cmd("Input.dispatchMouseEvent", {"type": "mousePressed", "x": x, "y": y, "button": "left", "clickCount": 1, "buttons": 1}); time.sleep(0.11)
@@ -130,6 +183,7 @@ def main():
     q = json.load(open(QUEUE, encoding="utf-8"))["queue"]
     log("v8 START i=%d last_tok=%d q=%d — 4-8min cadence, real clicks only" % (p["i"], p["last_tok"], len(q)))
     c = connect()
+    inject_login_cookies(c)  # 关键：把面板当前登录账号写进浏览器，防止用他人登录态发评论
     fails_streak = 0
     while p["i"] < len(q):
         # 面板停止开关：STOP=暂停退出（进度已保存）
@@ -240,7 +294,13 @@ def main():
             S(p); time.sleep(3)
             stat = verify_tok(g["tok"])
             log("✅ tok=%.0f 人=%d 已发=%d %s" % (g["tok"], len(g["names"]), p["posted"], stat))
-            jit = random.randint(30, 45)  # ~35s / 条
+            # 间隔从面板自定义配置读取（sender_config.json）
+            try:
+                cfg = json.load(open(os.path.join(WORK, "sender_config.json"), encoding="utf-8"))
+                base_interval = int(cfg.get("interval", 35))
+            except Exception:
+                base_interval = 35
+            jit = max(3, base_interval + random.randint(-2, 8))
             log("…等待%d秒再发下条" % jit); time.sleep(jit)
         else:
             fails_streak += 1

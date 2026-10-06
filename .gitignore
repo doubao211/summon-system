@@ -1,16 +1,31 @@
-﻿# secrets & session
+﻿# 凭据与隐私（绝不能上传）
 session.json
+accounts.json
+upmaster.json
 apology_state.json
 sent_state.json
+audit_report.json
+
+# 名单/队列/进度（个人数据）
 top5_queue.json
 top8_progress.json
+repo*_queue.json
+repo*_progress.json
 target.json
+data/
+
+# 运行状态文件
 flag.txt
 apology_flag.txt
-audit_report.json
+workbench_ui.json
+sender_config.json
+custom_template.txt
+mgr_close.log
+incantations.json
+
+# 浏览器与缓存
 edge_profile/
-shots/
 __pycache__/
+shots/
 *.log
 *.tmp
-incantations.json

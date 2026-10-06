@@ -1,25 +1,12 @@
 {
- "name": "onimai-summon-system",
- "version": "1.0.0",
- "display_name": "欧尼酱召唤系统",
- "description": "B站评论区@召唤同好自动化工具包：批量@召唤 + 111退订自动道歉 + 新粉丝探测，全图形界面控制",
- "language": "python",
- "python": ">=3.10",
- "dependencies": ["requests", "websocket-client", "qrcode"],
- "entry_points": {
-  "init": "init.py",
-  "main_gui": "summon_panel.py",
-  "watch_gui": "apology_watch_gui.py",
-  "engine": "top8_slow.py",
-  "login": "qr_login_new.py",
-  "probe_new_fans": "probe_new_fans.py",
-  "incremental_probe": "incremental_probe.py",
-  "merge_queue": "merge_new_fans.py",
-  "build_apologies": "build_apologies.py",
-  "dedup_apologies": "dedup_apologies.py",
-  "audit": "audit_sendings.py",
-  "find_missed": "find_missed.py"
- },
- "launchers": ["start_panel.bat", "start_watch.bat", "stop_all.bat"],
- "license": "MIT"
+  "name": "onimai-summon-system",
+  "version": "4.0.0",
+  "description": "B站评论区召唤工作台：多账号扫码登录 / 多仓库 / 标签探测 / 队列发送",
+  "main": "workbench.py",
+  "scripts": {
+    "init": "python init.py",
+    "start": "python workbench.py",
+    "push": "push.bat"
+  },
+  "license": "MIT"
 }
